@@ -33,7 +33,7 @@ namespace FFXIV_TexTools.IO
         /// <summary>
         /// Finds the offset of a texture name
         /// </summary>
-        /// <param name="textureName">Name of the texture to find the offset for</param>
+        /// <param name="textureName">A string containing the name of the texture (or it's hashed value) to find the offset for</param>
         public FindOffset(string textureName)
         {
             
