@@ -182,24 +182,9 @@ namespace FFXIV_TexTools.Helpers
 
 
 		/// <summary>
-		/// Calclulate the hash of a byte[] with CRC32-FFXIV
-		/// Formatting the output is handled by the receiver
+		/// Calculate the hash of a byte[] with CRC32-FFXIV
 		/// <para>
-		/// Normally this is used to calculate path hashes,
-		/// in that case the source string should be converted via
-		/// byte[] ecxBytes = Encoding.ASCII.GetBytes("a path");
-		/// </para>
-		/// <para>
-		/// This implicitly assumes that the string is ASCII
-		/// currently, XIV has not been observed using path characters
-		/// outside the Unicode BMP-C0, which means it maps 1:1 to ASCII
-		/// </para>
-		/// <para>
-		/// File paths should be fed in the following manner:
-		/// Original File path: "Folder1/Folder2/Folder3/File.ext"
-		/// File only:   "File.ext"
-		/// Folder only: "Folder1/Folder2/Folder3" (note the removal of the final path separator)
-		/// Full Path:   "Folder1/Folder2/Folder3/File.ext"
+		/// Use FFCRC.text(string s) instead of calling this directly
 		/// </para>
 		/// </summary>
 		/// <param name="ecxBytes">A byte array to hash (typically containing a string)</param>
@@ -255,7 +240,16 @@ namespace FFXIV_TexTools.Helpers
 			return dwCRC;
 		}
 
-
+		/// <summary>
+		/// Calculate the hash of a string with CRC32-FFXIV
+		/// <para /> File paths should be fed in the following manner:
+		/// <para /> Original File path: "Folder1/Folder2/Folder3/File.ext"
+		/// <para /> File only:   "File.ext"
+		/// <para /> Folder only: "Folder1/Folder2/Folder3" (note the removal of the final path separator)
+		/// <para /> Full Path:   "Folder1/Folder2/Folder3/File.ext"
+		/// </summary>
+		/// <param name="s">The path</param>
+		/// <returns>The resulting hash in formatted hexadecimal</returns>
 		public string text(string s)
 		{
 			int result = ComputeCRC(Encoding.Default.GetBytes(s));
