@@ -1,5 +1,6 @@
 ﻿// FFXIV TexTools
 // Copyright © 2017 Rafael Gonzalez - All Rights Reserved
+// Copyright © 2017 TheManii, et al. - All Rights Reserved
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,6 +28,22 @@ namespace FFXIV_TexTools.Helpers
 	class FFCRC
 	{
 		int dwCRC;
+		/// <summary>
+		/// The lookup tables used by ComputeCRC()
+		/// Most implementations of standard CRC32 use a single 256 entry
+		/// lookup table generated with the polynomial 0xEDB88320
+		/// 
+		/// <para>
+		/// XIV apparently uses 4 different lookup tables, one for each octet
+		/// </para>
+		/// 
+		/// <para>
+		/// TODO: the implied polynomials do not seem to reproduce the contents
+		/// of said tables, it may require more investigation to generate them at
+		/// runtime, most standard crc32 implementations store only the polynomial
+		/// and generate the lookup table at runtime
+		/// </para>
+		/// </summary>
 		uint[] crc_table_0f085d0 = new uint[]{
 			0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 0x0EDB8832,
 			0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91, 0x1DB71064, 0x6AB020F2,
@@ -163,6 +180,32 @@ namespace FFXIV_TexTools.Helpers
 			return ComputeCRC(ecxBytes, offset, ecxBytes.Length);
 		}
 
+
+		/// <summary>
+		/// Calclulate the hash of a byte[] with CRC32-FFXIV
+		/// Formatting the output is handled by the receiver
+		/// <para>
+		/// Normally this is used to calculate path hashes,
+		/// in that case the source string should be converted via
+		/// byte[] ecxBytes = Encoding.ASCII.GetBytes("a path");
+		/// </para>
+		/// <para>
+		/// This implicitly assumes that the string is ASCII
+		/// currently, XIV has not been observed using path characters
+		/// outside the Unicode BMP-C0, which means it maps 1:1 to ASCII
+		/// </para>
+		/// <para>
+		/// File paths should be fed in the following manner:
+		/// Original File path: "Folder1/Folder2/Folder3/File.ext"
+		/// File only:   "File.ext"
+		/// Folder only: "Folder1/Folder2/Folder3" (note the removal of the final path separator)
+		/// Full Path:   "Folder1/Folder2/Folder3/File.ext"
+		/// </para>
+		/// </summary>
+		/// <param name="ecxBytes">A byte array to hash (typically containing a string)</param>
+		/// <param name="offset">Unused</param>
+		/// <param name="cbLength">The length of ecxBytes</param>
+		/// <returns>The resulting hash as an int</returns>
 		public int ComputeCRC(byte[] ecxBytes, int offset, int cbLength) 
 		{
 			using (MemoryStream stream = new MemoryStream(ecxBytes))
@@ -175,12 +218,29 @@ namespace FFXIV_TexTools.Helpers
 					for (int i = 0; i < cbRunningLength / 4; ++i)
 					{
 						dwCRC ^= BitConverter.ToInt32(reader.ReadBytes(4), 0);
+						// Actually calculate the modified-CRC32 of the string
+						// Normally, standard CRC32 only has a single table lookup as declared 
+						// in the second line, but XIV uses separate table lookups for each octet
+						// and xors them all together
+						//
+						// Finally, the actual data manipulation here is actually
+						// rather unclean, entire operation is wrapped in unchecked()
+						// because of the way the CLI instance handles overflows, if dwCRC overflows
+						// an Int32, the CLI instance will actually sign extend it into
+						// what is effectively an Int64, and unchecked will clamp it back back 
+						// into an Int32, returning the original value
+						//
+						// While this produces the correct results, it has portability issues due
+						// to how unchecked() works, a fully portable solution may require multiple
+						// rounds of clamping to not assume the runtime will/won't handle any of it
 						dwCRC = unchecked((int)(crc_table_0f091d0[dwCRC & 0x000000FF] ^ crc_table_0f08dd0[(dwCRC >> 8) & 0x000000FF] ^ crc_table_0f089d0[(dwCRC >> 16) & 0x000000FF] ^ crc_table_0f085d0[(dwCRC >> 24) & 0x000000FF]));
 					}
 
 					for (int i = 0; i < cbEndUnalignedBytes; ++i)
 					{
 						byte b = reader.ReadByte();
+						// Since it works on an Int32, but takes in byte[] they may not
+						// fall on that boundry, handle any leftover remainders here
 						if (dwCRC < 0)
 						{
 							dwCRC = unchecked((int)(crc_table_0f085d0[(dwCRC ^ b) & 0x000000FF] ^ ((uint)dwCRC >> 8)));
