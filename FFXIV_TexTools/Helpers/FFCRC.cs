@@ -182,7 +182,7 @@ namespace FFXIV_TexTools.Helpers
 
 
 		/// <summary>
-		/// Calculate the hash of a byte[] with CRC32-FFXIV
+		/// Calculate the hash of a byte[] with CRC32-FFXIV-BE (FFXIV varient of CRC32 as a big endian hexadecimal string)
 		/// <para>
 		/// Use FFCRC.text(string s) instead of calling this directly
 		/// </para>
@@ -203,7 +203,7 @@ namespace FFXIV_TexTools.Helpers
 					for (int i = 0; i < cbRunningLength / 4; ++i)
 					{
 						dwCRC ^= BitConverter.ToInt32(reader.ReadBytes(4), 0);
-						// Actually calculate the modified-CRC32 of the string
+						// Actually calculate the FFXIV variant CRC32 of the string
 						// Normally, standard CRC32 only has a single table lookup as declared 
 						// in the second line, but XIV uses separate table lookups for each octet
 						// and xors them all together
@@ -241,7 +241,7 @@ namespace FFXIV_TexTools.Helpers
 		}
 
 		/// <summary>
-		/// Calculate the hash of a string with CRC32-FFXIV
+		/// Calculate the hash of a string with CRC32-FFXIV-BE (FFXIV varient of CRC32 as a big endian hexadecimal string)
 		/// <para /> File paths should be fed in the following manner:
 		/// <para /> Original File path: "Folder1/Folder2/Folder3/File.ext"
 		/// <para /> File only:   "File.ext"
@@ -249,10 +249,14 @@ namespace FFXIV_TexTools.Helpers
 		/// <para /> Full Path:   "Folder1/Folder2/Folder3/File.ext"
 		/// </summary>
 		/// <param name="s">The path</param>
-		/// <returns>The resulting hash in formatted hexadecimal</returns>
+		/// <returns>The resulting hash</returns>
 		public string text(string s)
 		{
 			int result = ComputeCRC(Encoding.Default.GetBytes(s));
+			// Up until this point, all values were read and stored as Little-Endian
+			// as binaryreader explicitly reads in LE regardless of underlying CPU endian-ness
+			// Here we convert it into a Big-Endian string, as all strings are dealt with in BE
+			// while all ints are dealt with in the previously mentioned LE
 			return String.Format("{0:X8}", result);
 		}
 	}
