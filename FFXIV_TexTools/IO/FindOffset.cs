@@ -23,47 +23,45 @@ using FFXIV_TexTools.Helpers;
 
 namespace FFXIV_TexTools.IO
 {
+    /// <summary>
+    /// String conversion functions used to map filenames to physical locations
+    /// </summary>
+    /// FIXME?: Does this need to be non static?
+    /// FindOffset can be refactored into a static class
     public class FindOffset
     {
+        /// <summary>
+        /// Create a FFCRC object, as FFCRC.text() is needed below
+        /// </summary>
         FFCRC crc = new FFCRC();
 
         /// <summary>
-        /// an offset stored as a big-endian hexadecimal value
+        /// The temporary offset in question
         /// </summary>
         string fileOffset = "0";
         /// <summary>
-        /// a CRC-32-FFXIV-BE hash
+        /// a CRC32-FFXIV hash
         /// </summary>
         string fileCRC;
         List<int> races;
 
         /// <summary>
-        /// Finds the offset of a texture or model
+        /// Finds the stored offset of a given path in 400000.win32.index(1), does not check which folder a file is in
+        /// <para>
+        /// Use FindOffset.getFileOffset() to get the resulting offset and for more information on offsets
+        /// </para>
         /// </summary>
-        /// <param name="textureName">A string containing the filename of a texture/model (or a CRC32-FFXIV-BE hash)</param>
+        /// FIXME: This function overlaps with FindOffset(string, string)
+        /// <param name="textureName">A string containing the filename of a texture/model (or a CRC32-FFXIV hash)</param>
         public FindOffset(string textureName)
         {
-            // If the incoming string contains an extension, then it's an actual path and not an offset
-            // FIXME: make check generic by using System.IO.Path.HasExtension(string)
-            //          the above will also allow it to handle abritrary files, the current implementation
-            //          specifically whitelists valid file types, 
-            //          even though the code below it is (mostly) file format agnostic
+            // If the incoming string contains an extension
+            // it must be a file and we need the hash of it
+            // FIXME: this should be refactored to handle generic filenames
+            //        or hashes, all hashes should be calculated at the same place/point
             if (textureName.Contains(".tex") || textureName.Contains(".mdl"))
             {
-                // If it is a path, get the hash from it, and use a dummy foldername for it
-                // Example: If "foo.tex" returned a hash of "01234567", pad it to "0123456700000000"
-                // The code below searches index1, which stores file entries as:
-                //
-                // (Entry X): AAAAAAAABBBBBBBBXXXXXXXX00000000 
-                // (Entry Y): AAAAAAAABBBBBBBBXXXXXXXX00000000 
-                //
-                // AAAAAAAA : hash of the filename
-                // BBBBBBBB : hash of the foldername
-                // XXXXXXXX : packed offset
-                // 00000000 : Null
-                //
-                // Since we don't care about the foldername, simply pad it with 0's
-                // instead of seeking around it
+                
                 fileCRC = crc.text(textureName).PadLeft(8, '0');
             }
             else
@@ -74,40 +72,48 @@ namespace FFXIV_TexTools.IO
 
             // Note that textools can only handle specific filetypes by design
             // the limit here to 040000 is artifical since the other containers has no data textools can currently handle
+            // FIXME: if future indexes are to be read, this needs to be un-hardcoded, and checks to see if the file exists
             using (BinaryReader br = new BinaryReader(File.OpenRead(Properties.Settings.Default.DefaultDir + "/040000.win32.index")))
             {
+                // 1036 (0x040c) is: Master Header Size ->  Segment Header Origin -> Segment 1 Unk  ->  Segment 1 Origin -> Segment 1 Length
+                // Offset (size)   : 0x000c (int32)     ->  0x0400  (int32)       -> 0x0404 (int32) ->  0x0408 (int32)   -> 0x040c (int32)
+                // Current Value   : 0x0400             ->  0x0400                -> (Unneeded)     ->  0x0800           -> 0x01ab950 
+                // Note: values may change depending on game version, bytes are stored as little-endian (the above is big-endian)
                 br.BaseStream.Seek(1036, SeekOrigin.Begin);
-                // This is the upper bound for how far to check the index
-                // past this are the folder section of index
+                // FIXME: This is more correctly the size of segment 1
+                //        Each entry in segment 1 is 16 bytes
                 int totalFiles = br.ReadInt32();
 
-                // the actual beginning of the files is another 4 bytes after this
-                // but don't include it here so the for loop can do it
+                // Seek to the beginning of segment 1's data, which is 2048 (0x800) as seen above
                 br.BaseStream.Seek(2048, SeekOrigin.Begin);
 
-                // the br.ReadBytes(4) in the for loop decleration is the null portion of the index1 entry
+                // i+= 16 is to take into account the size of an entry
+                // the br.ReadBytes(4) here handles reading past the null field
                 for (int i = 0; i < totalFiles; br.ReadBytes(4), i += 16)
                 {
-                    // Load the current file entry, the underlying filename is a little endian CRC32-FFXIV hash
-                    // ReadInt32 reads the underlying bytes and returns an int
-                    // ToString and PadLeft turns this into a big endian string
+                    // Load the current file entry, and turn it into a string to compare against
                     string tempOffset = br.ReadInt32().ToString("X").PadLeft(8, '0');
 
-                    // Since both tempOffset and fileCRC are now big endian hex strings, compare them
+                    // Actually compare them
                     if (tempOffset.Equals(fileCRC))
                     {
                         // read the folder field and discard it
+                        // FIXME: since the folder field is discarded, it's possible
+                        //        to have filename collisions in theory;
+                        //        in practice: that should not be an issue in TexTools
+                        // FIXME: Segment 4 (folder offsets) is not used, while it may/may not
+                        //        be faster to not use them, it might be more correct to actually use them
                         br.ReadBytes(4);
                         // read the packed offset field
                         byte[] offset = br.ReadBytes(4);
-                        // read the actual offset and construct a big endian hexadecimal string
+                        // read the actual offset and construct a string
                         fileOffset = (BitConverter.ToInt32(offset, 0) * 8).ToString("X").PadLeft(8, '0');
-                        // exit
+                        // exit the loop
                         break;
                     }
                     else
                     {
-                        // if they don't match seek past the folder/offset fields
+                        // If they don't match, read past the folder/offset fields
                         // the null field is handled in the for loop decleration
                         br.ReadBytes(8);
                     }
@@ -116,11 +122,14 @@ namespace FFXIV_TexTools.IO
         }
 
         /// <summary>
-        /// Find the offset of a file
+        /// Finds the stored offset of a given path in 400000.win32.index(1), also checks which folder a file is in
+        /// <para>
+        /// Use FindOffset.getFileOffset() to get the resulting offset and for more information on offsets
+        /// </para>
         /// </summary>
         /// See FileOffset(string) for comments on how this works, it's mostly identical
-        /// <param name="textureHex">The CRC32-FFXIV-BE hash of a file</param>
-        /// <param name="folderHex">The CRC32-FFXIV-BE hash of a folder</param>
+        /// <param name="textureHex">The CRC32-FFXIV hash of a file</param>
+        /// <param name="folderHex">The CRC32-FFXIV hash of a folder</param>
         public FindOffset(string textureHex, string folderHex)
         {
             using (BinaryReader br = new BinaryReader(File.OpenRead(Properties.Settings.Default.DefaultDir + "/040000.win32.index")))
@@ -137,6 +146,7 @@ namespace FFXIV_TexTools.IO
                     {
                         // Check the foldername, if the caller specified FindOffset("a file", "none")
                         // then drop the foldername and simply return the file offset
+                        // FIXME: this is effectively what FindOffset(string) does
                         if (folderHex.Equals("none"))
                         {
                             br.ReadBytes(4);
@@ -168,12 +178,16 @@ namespace FFXIV_TexTools.IO
         }
 
         /// <summary>
-        /// Find the offset of multiple files in the same folder,
+        /// Find the stored offsets of multiple files in the same folder,
         /// also loads race data(?)
+        /// <para>
+        /// Use FindOffset.getFileOffset() to get the resulting offset and for more information on offsets
+        /// </para>
         /// </summary>
         /// not currntly in use
-        /// <param name="textureHexs">The CRC32-FFXIV-BE hash of an array of files</param>
-        /// <param name="folderHex">The CRC32-FFXIV-BE hash of a folder</param>
+        /// See FileOffset(string) for comments on how this works, it's mostly identical
+        /// <param name="textureHexs">The CRC32-FFXIV hash of an array of files</param>
+        /// <param name="folderHex">The CRC32-FFXIV hash of a folder</param>
         public FindOffset(string[] textureHexs, string folderHex)
         {
             using (BinaryReader br = new BinaryReader(File.OpenRead(Properties.Settings.Default.DefaultDir + "/040000.win32.index")))
@@ -209,9 +223,15 @@ namespace FFXIV_TexTools.IO
             }
         }
         /// <summary>
-        /// The actual file offset from a previous FindOffset()
+        /// The expanded offset for an entry in index1 from FindOffset()
+        /// <para>
+        /// There are three kinds of offsets (both index1 and index2 use the same formula, but different source paths):
+        /// </para>
+        /// <para/> Stored offsets: What is stored in the index, an expanded offset divided by 8
+        /// <para/> Expanded offsets: The physical offset with the dat container muxed in
+        /// <para/> Physical offsets: The actual physical location offset of a file in the dat container
         /// </summary>
-        /// <returns>A string containing the offset as big-endian hexadecimal</returns>
+        /// <returns>A string containing the expanded offset as big-endian hexadecimal</returns>
         public string getFileOffset()
         {
             return fileOffset;

@@ -23,8 +23,11 @@ using System.Text;
 namespace FFXIV_TexTools.Helpers
 {
     /// <summary>
-    /// Computes CRC given FFXIV directory or file name string
+    /// Computes the CRC32-FFXIV hash of a given string
     /// </summary>
+    /// FIXME?: Does this need to be non static?
+    /// FFCRC can be refactored into a static class
+    /// FIXME: FFCRC has no visability modifier
     class FFCRC
     {
         int dwCRC;
@@ -182,12 +185,12 @@ namespace FFXIV_TexTools.Helpers
 
 
         /// <summary>
-        /// Calculate the hash of a byte[] with CRC32-FFXIV-BE (FFXIV varient of CRC32 as a big endian hexadecimal string)
+        /// Calculate the hash of a byte[] with CRC32-FFXIV (FFXIV varient of CRC32)
         /// <para>
         /// Use FFCRC.text(string s) instead of calling this directly
         /// </para>
         /// </summary>
-        /// <param name="ecxBytes">A byte array to hash (typically containing a string)</param>
+        /// <param name="ecxBytes">A byte array containing a path</param>
         /// <param name="offset">Unused</param>
         /// <param name="cbLength">The length of ecxBytes</param>
         /// <returns>The resulting hash as an int</returns>
@@ -197,7 +200,11 @@ namespace FFXIV_TexTools.Helpers
             {
                 using (BinaryReader reader = new BinaryReader(stream))
                 {
+                    // dwCRC must be initially non-zero, standard practice is to use -1
                     dwCRC = -1;
+                    // Calculate the remainder for alignment purposes
+                    // the formula for the remainder bits is different
+                    // so we need to know if that needs to be handled at the end
                     int cbRunningLength = ((cbLength < 4) ? 0 : ((cbLength) / 4) * 4);
                     int cbEndUnalignedBytes = cbLength - cbRunningLength;
                     for (int i = 0; i < cbRunningLength / 4; ++i)
@@ -208,23 +215,17 @@ namespace FFXIV_TexTools.Helpers
                         // in the second line, but XIV uses separate table lookups for each octet
                         // and xors them all together
                         //
-                        // Finally, the actual data manipulation here is actually
-                        // rather unclean, entire operation is wrapped in unchecked()
-                        // because of the way the CLI instance handles overflows, if dwCRC overflows
-                        // an Int32, the CLI instance will actually sign extend it into
-                        // what is effectively an Int64, and unchecked will clamp it back back 
-                        // into an Int32, returning the original value
-                        //
-                        // While this produces the correct results, it has portability issues due
-                        // to how unchecked() works, a fully portable solution may require multiple
-                        // rounds of clamping to not assume the runtime will/won't handle any of it
+                        // Additionally, also pay attention to how dwCRC overflows,
+                        // in this implementation, unchecked is used so the int can simply overflow
+                        // and wrap around, which is required to reproduce the correct results
                         dwCRC = unchecked((int)(crc_table_0f091d0[dwCRC & 0x000000FF] ^ crc_table_0f08dd0[(dwCRC >> 8) & 0x000000FF] ^ crc_table_0f089d0[(dwCRC >> 16) & 0x000000FF] ^ crc_table_0f085d0[(dwCRC >> 24) & 0x000000FF]));
                     }
 
                     for (int i = 0; i < cbEndUnalignedBytes; ++i)
                     {
+                        // actually reader.readInt8(), but that alias does not exist
                         byte b = reader.ReadByte();
-                        // Since it works on an Int32, but takes in byte[] they may not
+                        // Since it works on an Int32 (4 bytes), but takes in byte[] they may not
                         // fall on that boundry, handle any leftover remainders here
                         if (dwCRC < 0)
                         {
@@ -241,7 +242,7 @@ namespace FFXIV_TexTools.Helpers
         }
 
         /// <summary>
-        /// Calculate the hash of a string with CRC32-FFXIV-BE (FFXIV varient of CRC32 as a big endian hexadecimal string)
+        /// Calculate the hash of a string with CRC32-FFXIV (FFXIV varient of CRC32)
         /// <para /> File paths should be fed in the following manner:
         /// <para /> Original File path: "Folder1/Folder2/Folder3/File.ext"
         /// <para /> File only:   "File.ext"
@@ -252,11 +253,16 @@ namespace FFXIV_TexTools.Helpers
         /// <returns>The resulting hash</returns>
         public string text(string s)
         {
+            // Valid filenames have so far exclusively been within the
+            // Unicode BMP-C0 plane, which is a 1:1 match to ASCII
+            // FIXME: calling Encoding.Default here might produce incorrect
+            //        results if the system default encoding differs such 
+            //        as SHIFT_JIS or a non ASCII compatable encoding
             int result = ComputeCRC(Encoding.Default.GetBytes(s));
-            // Up until this point, all values were read and stored as Little-Endian
-            // as binaryreader explicitly reads in LE regardless of underlying CPU endian-ness
-            // Here we convert it into a Big-Endian string, as all strings are dealt with in BE
-            // while all ints are dealt with in the previously mentioned LE
+            // Note that this string is returned as Big-Endian
+            // When manually checking the results in an index,
+            // you must byte-swap the results as they are stored
+            // in little-endian 
             return String.Format("{0:X8}", result);
         }
     }
