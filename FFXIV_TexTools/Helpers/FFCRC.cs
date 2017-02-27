@@ -41,11 +41,20 @@ namespace FFXIV_TexTools.Helpers
         /// </para>
         /// 
         /// <para>
-        /// TODO: the implied polynomials do not seem to reproduce the contents
-        /// of said tables, it may require more investigation to generate them at
-        /// runtime, most standard crc32 implementations store only the polynomial
-        /// and generate the lookup table at runtime
+        /// The tables themselves are pulled directly from the game binary
+        /// as two of the tables can be regenerated with a standard CRC32
+        /// table generator, but the other two are custom tables
+        /// that require a custom/unknown generator function to recreate
+        /// crcTableEDB88320 = 0xEDB88320
+        /// crcTableUnknown1 = not a standard crc32 lookup table
+        /// crcTableE1351B80 = 0xE1351B80
+        /// crcTableUnknown2 = not a standard crc32 lookup table
         /// </para>
+        /// The table names are their previous offsets in ffxiv.exe
+        /// as they can migrate around as that gets recompiled,
+        /// they are no longer valid offsets, but the data
+        /// still can be found as shown, just at a different
+        /// offset
         /// </summary>
         uint[] crc_table_0f085d0 = new uint[]{
             0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 0x0EDB8832,
