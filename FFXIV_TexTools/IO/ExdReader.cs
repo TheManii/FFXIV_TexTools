@@ -225,44 +225,83 @@ namespace FFXIV_TexTools.IO
         }
 
         /// <summary>
-        /// Decompresses the byte array 
+        /// Reads a Type-2 (generic binary) file
         /// </summary>
-        /// <param name="offset">Offset of the byte list to decompress</param>
-        /// <returns></returns>
+        /// <param name="offset">A physical offset to the file</param>
+        /// <returns>The contents</returns>
         public byte[] getDecompressedBytes(string offset)
         {
             int initialOffset = int.Parse(offset, NumberStyles.HexNumber);
             List<byte> byteList = new List<byte>();
 
+            // 0a0000/dat0 is hardcoded here simply because textools is not a generic
+            // file manager, so we simply hardcode that value
+            // TODO: Make this generic instead of hardcoding
+            //       0a0000 is unlikely to need a dat1 any time soon
+            //       but it's not an assumption that should be made anyway
             using (BinaryReader br = new BinaryReader(File.OpenRead(Properties.Settings.Default.DefaultDir + "/0a0000.win32.dat0")))
             {
+                #region Read the common header
                 br.BaseStream.Seek(initialOffset, SeekOrigin.Begin);
 
+                // Begin reading the common header
                 int headerLength = br.ReadInt32();
+                // The type determines the block table layout
+                // as we know ahead of time this is Type-2 (binary)
+                // we can assume ahead of time the block table used
+                // (but not it's size, see below)
                 int type = br.ReadInt32();
                 int decompressedSize = br.ReadInt32();
+                // This is actually
+                // int commonHeaderUnk1 = br.ReadInt32();
+                // int commonHeaderUnk2 = br.ReadInt32();
+                // except that we don't know/use these
+                // fields, so simply discard them
                 br.ReadBytes(8);
+                // The block count in the block table is determined here
+                // This is actually blocks and not parts, Type-2 entries have no parts
                 int parts = br.ReadInt32();
+                #endregion
 
                 int endOfHeader = initialOffset + headerLength;
+
+                // 24 is the length of the previous 6 fields
                 int partStart = initialOffset + 24;
 
+                #region Read and decompress the blocks
+                // f is the current block
+                // g is the offset entry in the common header for block[i]
                 for (int f = 0, g = 0; f < parts; f++)
                 {
-                    //read the current parts info
+                    // We jump back to the common header 
+                    // and read the entry for the current block
                     br.BaseStream.Seek(partStart + g, SeekOrigin.Begin);
+
+                    #region Common Header Block fields
                     int fromHeaderEnd = br.ReadInt32();
                     int partLength = br.ReadInt16();
                     int partSize = br.ReadInt16();
+                    #endregion
+
                     int partLocation = endOfHeader + fromHeaderEnd;
 
-                    //go to part data and read its info
+                    // Then we jump back to the compressed file contents
                     br.BaseStream.Seek(partLocation, SeekOrigin.Begin);
+
+                    #region Block header
+                    // This is actually
+                    // int blockHeaderLength = br.ReadInt32();
+                    // int blockHeaderUnk1   = br.ReadInt32();
+                    // except that we don't know/use these
+                    // fields, so simply discard them
                     br.ReadBytes(8);
                     int partCompressedSize = br.ReadInt32();
                     int partDecompressedSize = br.ReadInt32();
+                    #endregion
 
-                    //if data is already uncompressed add to list if not decompress and add to list
+                    #region Decompress the block
+                    // If the size is 32000, that chunk is not compressed
+                    // so directly read it in and move on to the next block
                     if (partCompressedSize == 32000)
                     {
                         byte[] forlist = br.ReadBytes(partDecompressedSize);
@@ -275,16 +314,23 @@ namespace FFXIV_TexTools.IO
 
                         using (MemoryStream ms = new MemoryStream(forlist))
                         {
+                            // The actual compressed data is compressed with deflate
                             using (DeflateStream ds = new DeflateStream(ms, CompressionMode.Decompress))
                             {
+                                // Decompress partDecompressedSize's worth of bytes from ds
+                                // and write them to partDecompressedBytes
                                 int count = ds.Read(partDecompressedBytes, 0x00, partDecompressedSize);
                             }
                         }
+                        // And save it
                         byteList.AddRange(partDecompressedBytes);
                     }
+                    #endregion
                     g += 8;
                 }
+                #endregion
             }
+            // Store all the bytes, the file data is complete at this point
             decompBytes = byteList.ToArray();
             return decompBytes;
         }

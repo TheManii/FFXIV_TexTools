@@ -92,19 +92,20 @@ namespace FFXIV_TexTools.IO
                 int type = br.ReadInt32();
                 // The size of the decompressed file (in bytes)
                 int decompSize = br.ReadInt32();
-                // Not all fields are currently known/needed/used
+                // This is actually
+                // int commonHeaderUnk1 = br.ReadInt32();
+                // int commonHeaderUnk2 = br.ReadInt32();
+                // except that we don't know/use these
+                // fields, so simply discard them
                 br.ReadBytes(8);
 
-                // The entry count in the block table is determined here
+                // The block count in the block table is determined here
                 int mipMapCount = br.ReadInt32();
                 #endregion
 
                 int endOfHeader = initialOffset + headerLength;
 
-                // This is actually the next offset,
-                // but the code below jumps around repeatedly between
-                // the file contents and the header, so we remember our spot
-                // FIXME?: 
+                // 24 is the length of the previous 6 fields
                 int mipMapInfoStart = initialOffset + 24;
 
                 #region Texture header
@@ -151,51 +152,53 @@ namespace FFXIV_TexTools.IO
                  * <decompressed mipmap Z>
                  */
 
-                // Read the mipmap chunk entries
+                #region Read and decompress the blocks
+                // i is the current block
+                // j is the offset entry in the common header for block[i]
                 for (int i = 0, j = 0; i < mipMapCount; i++)
                 {
                     // We jump back to the common header 
-                    // and read the entry for the current chunk
+                    // and read the entry for the current block
                     br.BaseStream.Seek(mipMapInfoStart + j, SeekOrigin.Begin);
 
-                    // Read the metadata on this specific chunk field
-                    #region Common Header Chunk fields
-                    // There are actually two sets of offsets:
-                    // Common header offsets: offsets for the compressed chunks/parts
-                    // Texture header offsets: offsets for the decompressed chunks/parts
-                    //
-                    // As this is inside the common header, it is the offsets for the former
+                    #region Common Header Block fields
                     int offsetFromHeaderEnd = br.ReadInt32();
                     int mipMapLength = br.ReadInt32();
                     int mipMapSize = br.ReadInt32();
                     int mipMapStart = br.ReadInt32();
-                    // Each individual chunk can be made of multiple parts
+                    // Each individual block can be made of multiple parts
                     int mipMapParts = br.ReadInt32();
 
-                    // there are actually more fields
-                    // we don't currently use them so we dont bother reading them
+                    // There's also
+                    // blockCompressedSize   = br.ReadInt16();
+                    // blockDecompressedSize = br.ReadInt16();
+                    // except that we don't use these
+                    // fields, so simply discard them
                     #endregion
 
                     int mipMapOffset = endOfHeader + offsetFromHeaderEnd;
 
-                    #region Decompress the file
+                    // Then we jump back to the compressed file contents
                     br.BaseStream.Seek(mipMapOffset, SeekOrigin.Begin);
 
-                    #region Part header
-                    // We ignore the part header length and chunk unk1 fields
+                    #region Block header
+                    // This is actually
+                    // int blockHeaderLength = br.ReadInt32();
+                    // int blockHeaderUnk1   = br.ReadInt32();
+                    // except that we don't know/use these
+                    // fields, so simply discard them
                     br.ReadBytes(8);
                     int compressedSize = br.ReadInt32();
                     int decompressedSize = br.ReadInt32();
                     #endregion
 
-                    #region Chunks with multiple parts
+                    #region Blocks with multiple parts
                     if (mipMapParts > 1)
                     {
-                        // Get the size fields, we must know them beforehand
                         byte[] compressedData = br.ReadBytes(compressedSize);
                         byte[] decompressedData = new byte[decompressedSize];
 
-                        // Decompress Chunk[i] Part[0]
+                        // Decompress Block[i] Part[0]
                         using (MemoryStream ms = new MemoryStream(compressedData))
                         {
                             // The actual compressed data is compressed with deflate
@@ -210,8 +213,7 @@ namespace FFXIV_TexTools.IO
                         // And save it
                         byteList.AddRange(decompressedData);
 
-                        // Decompress Chunk[i] Part[1] -> Part[k]
-                        //start MipMap Parts Read
+                        // Decompress Block[i] Part[1] -> Part[k]
                         for (int k = 1; k < mipMapParts; k++)
                         {
                             // Seek past the padding at the end of the file to the next header
@@ -239,7 +241,7 @@ namespace FFXIV_TexTools.IO
                             compressedData = br.ReadBytes(compressedSize);
                             decompressedData = new byte[decompressedSize];
 
-                            // Decompress a mipmap part
+                            // Decompress a block part
                             using (MemoryStream ms = new MemoryStream(compressedData))
                             {
                                 // The actual compressed data is compressed with deflate
@@ -254,18 +256,15 @@ namespace FFXIV_TexTools.IO
                         }
                     }
                     #endregion
-                    #region Chunk with one part
+                    #region Blocks with one part
                     else
                     {
                         byte[] compressedData, decompressedData;
 
                         // If the size is 32000, that chunk is not compressed
-                        // so directly read it in and move on to the next chunk
+                        // so directly read it in and move on to the next block
                         if (compressedSize != 32000)
                         {
-                            // Else decompress it
-
-                            // Get the size fields, we must know them beforehand
                             compressedData = br.ReadBytes(compressedSize);
                             decompressedData = new byte[decompressedSize];
 
@@ -286,11 +285,9 @@ namespace FFXIV_TexTools.IO
                         }
                     }
                     #endregion
-                    
-                    // Seek to the next chunk
                     j = j + 20;
                 }
-
+                #endregion
                 if (byteList.Count < decompSize)
                 {
                     int difference = decompSize - byteList.Count;
@@ -298,7 +295,6 @@ namespace FFXIV_TexTools.IO
                     Array.Clear(padd, 0, difference);
                     byteList.AddRange(padd);
                 }
-                #endregion
             }
             // Store all the bytes, the file data is complete at this point
             decompressedTexture = byteList.ToArray();
