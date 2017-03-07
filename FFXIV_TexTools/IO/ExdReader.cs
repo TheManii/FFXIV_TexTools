@@ -289,7 +289,7 @@ namespace FFXIV_TexTools.IO
                     // Then we jump back to the compressed file contents
                     br.BaseStream.Seek(partLocation, SeekOrigin.Begin);
 
-                    #region Block header
+                    #region Block fields
                     // This is actually
                     // int blockHeaderLength = br.ReadInt32();
                     // int blockHeaderUnk1   = br.ReadInt32();

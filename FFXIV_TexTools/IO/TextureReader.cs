@@ -36,6 +36,7 @@ namespace FFXIV_TexTools.IO
         /// </summary>
         /// <param name="offset">An Expanded offset to the texture</param>
         /// <param name="file">The full path to the dat subcontainer</param>
+        /// FIXME: There is no return type (void)
         public TextureReader(string offset, string file)
         {
             List <byte> byteList = new List<byte>();
@@ -109,7 +110,7 @@ namespace FFXIV_TexTools.IO
                 // 24 is the length of the previous 6 fields
                 int mipMapInfoStart = initialOffset + 24;
 
-                #region Texture header
+                #region Texture fields
                 // Re-seek past the end of the common header, into the file itself
                 // we also don't use the 1st field (header size) inside the file
                 // so seek past that to the 1st fields we use
