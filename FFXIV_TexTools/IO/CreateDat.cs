@@ -60,16 +60,30 @@ namespace FFXIV_TexTools
 
                 SHA1Managed shaM = new SHA1Managed();
 
+                // SqPack Magic
+                // PaSq
                 hw.Write(1632661843);
+                // ck
                 hw.Write(27491);
+                // Blank space after magic
                 hw.Write(0);
+                // Header Length
                 hw.Write(1024);
+                // Unk1
                 hw.Write(1);
+                // Type
                 hw.Write(1);
+                // Build date
                 hw.Seek(8, SeekOrigin.Current);
+                // Unk5
                 hw.Write(-1);
+                // Unk6
+                // Unk7
+                // ...
+                // Blank
                 hw.Seek(960, SeekOrigin.Begin);
 
+                // SHA
                 hw.Write(shaM.ComputeHash(header, 0, 959));
 
                 bw.Write(header);
@@ -90,16 +104,27 @@ namespace FFXIV_TexTools
 
                 SHA1Managed shaM = new SHA1Managed();
 
+                // Header Length
                 hw.Write(header.Length);
+                // Unk2
                 hw.Write(0);
+                // Unk3
                 hw.Write(16);
+                // Data Segment Length
                 hw.Write(2048);
+                // Dat is subcontainer
                 hw.Write(2);
+                // Unk6
                 hw.Write(0);
+                // Max File Size
                 hw.Write(2000000000);
+                // Unk8
                 hw.Write(0);
+                // ...
+                // Blank
                 hw.Seek(960, SeekOrigin.Begin);
 
+                // SHA
                 hw.Write(shaM.ComputeHash(header, 0, 959));
 
                 bw.BaseStream.Seek(1024, SeekOrigin.Begin);
