@@ -26,9 +26,17 @@ namespace FFXIV_TexTools
         /// </summary>
         public CreateDat()
         {
+            // TODO: both of these assume we're only working with 040000
+            //       textools currently only works with model textures
+            //       UI textures are stored outside 040000 so it will need to be
+            //       unhardcoded to work with those
+            // TODO: this currently assumes that dat2 is the last official dat
+            //       unhardcode it so that it's <last official dat> +1
             string newDat = Properties.Settings.Default.DefaultDir + "/040000.win32.dat3";
+            // TODO: this only updates index(1), the same entry exists in index2
             string indexDir = Properties.Settings.Default.DefaultDir + "/040000.win32.index";
 
+            #region Create new blank dat container
             using(FileStream fs = File.Create(newDat)){
                 using (BinaryWriter bw = new BinaryWriter(fs))
                 {
@@ -38,12 +46,19 @@ namespace FFXIV_TexTools
                     writeDatHeader(bw);
                 }
             }
+            #endregion
 
+            #region Update the index 
             using(BinaryWriter bw = new BinaryWriter(File.OpenWrite(indexDir))){
+                // Segment Header -> Segment 2 (Dat container metadata (?) ) -> Segment 2 number of dats
                 bw.BaseStream.Seek(1104, SeekOrigin.Begin);
+                // 040000 currently ships with 3 dats (dat0 -> dat2)
+                // add one more to it and write it to the header
                 byte b = 4;
                 bw.Write(b);
+                // NOTE: this does not update the SHA fields for the segment entry
             }
+            #endregion
 
         }
 
